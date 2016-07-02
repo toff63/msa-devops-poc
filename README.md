@@ -14,4 +14,4 @@ The goal of this repository is primarly to have fun and secondly to build a POC 
 
 
 Currently done:
-* hello world with Finatra
+* hello world with [Finatra](http://finatra.info/)
