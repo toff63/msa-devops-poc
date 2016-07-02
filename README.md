@@ -15,3 +15,4 @@ The goal of this repository is primarly to have fun and secondly to build a POC 
 
 Currently done:
 * hello world with [Finatra](http://finatra.info/)
+* basic infrastrucutre in AWS with a basic vpc, public subnet, private subnet and bastion setup using [Terraform](http://terraform.io)
