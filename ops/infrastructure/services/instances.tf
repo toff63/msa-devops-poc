@@ -4,7 +4,7 @@ variable "sg_bastion_id" {}
 resource "aws_instance" "service" {
     ami = "ami-b2e3c6d8"
     instance_type = "t1.micro"
-    security_groups = ["${aws_security_group.sg_service.id}"]
+    vpc_security_group_ids = ["${aws_security_group.sg_service.id}"]
     subnet_id = "${aws_subnet.main_private_srv_d.id}"
     associate_public_ip_address = "false"
     iam_instance_profile = "empty"
