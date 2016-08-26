@@ -1,4 +1,5 @@
 variable "vpc_id" {}
+variable "internet_gw_id" {}
 
 output "sg_bastion_id" {
     value = "${aws_security_group.sg_bastion.id}"
@@ -59,6 +60,32 @@ resource "aws_security_group" "sg_bastion" {
 
 }
 
+resource "aws_route_table" "r-vpc-main" {
+    vpc_id = "${var.vpc_id}"
+    route {
+        cidr_block = "0.0.0.0/0"
+        nat_gateway_id = "${var.internet_gw_id}"
+    }
+
+    tags {
+        Project = "msa"
+        Name = "main"
+    }
+}
+
+resource "aws_route_table_association" "public_d" {
+    subnet_id = "${aws_subnet.main_public_d.id}"
+    route_table_id = "${aws_route_table.r-vpc-main.id}"
+}
+resource "aws_route_table_association" "public_c" {
+    subnet_id = "${aws_subnet.main_public_c.id}"
+    route_table_id = "${aws_route_table.r-vpc-main.id}"
+}
+resource "aws_route_table_association" "public_b" {
+    subnet_id = "${aws_subnet.main_public_b.id}"
+    route_table_id = "${aws_route_table.r-vpc-main.id}"
+}
+
 resource "aws_eip" "nat" {
   vpc      = true
 }
@@ -68,4 +95,4 @@ resource "aws_nat_gateway" "gw" {
   subnet_id = "${aws_subnet.main_public_d.id}"
 }
 
-
+output "nat_gw_id"      { value = "${aws_nat_gateway.gw.id}"}
