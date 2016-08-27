@@ -1,10 +1,6 @@
 variable "vpc_id" {}
 variable "internet_gw_id" {}
 
-output "sg_bastion_id" {
-    value = "${aws_security_group.sg_bastion.id}"
-}
-
 resource "aws_subnet" "main_public_d" {
     vpc_id = "${var.vpc_id}"
     cidr_block = "10.0.1.0/24"
@@ -95,4 +91,8 @@ resource "aws_nat_gateway" "gw" {
   subnet_id = "${aws_subnet.main_public_d.id}"
 }
 
+output "public_subnet_id_d" {value = "${aws_subnet.main_public_d.id}"}
+output "public_subnet_id_c" {value = "${aws_subnet.main_public_c.id}"}
+output "public_subnet_id_b" {value = "${aws_subnet.main_public_b.id}"}
+output "sg_bastion_id" {value = "${aws_security_group.sg_bastion.id}"}
 output "nat_gw_id"      { value = "${aws_nat_gateway.gw.id}"}

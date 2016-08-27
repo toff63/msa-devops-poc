@@ -1,0 +1,10 @@
+---
+
+- name: Add trusted key
+  apt_key: url=http://pkg.jenkins.io/debian/jenkins.io.key
+
+- name: Ensure jenkins repository is present
+  apt_repository: repo='deb http://pkg.jenkins.io/debian-stable binary/' state=present
+
+- name: Install jenkins
+  apt: name=jenkins update_cache=yes
