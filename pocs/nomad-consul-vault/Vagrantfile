@@ -1,0 +1,199 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+$script = <<SCRIPT
+# Update apt and get dependencies
+sudo apt-get update
+sudo apt-get install -y unzip curl wget vim
+
+# Download Nomad
+echo Fetching Nomad...
+cd /tmp/
+curl -sSL https://releases.hashicorp.com/nomad/0.4.1/nomad_0.4.1_linux_amd64.zip -o nomad.zip
+
+echo Installing Nomad...
+unzip nomad.zip
+sudo chmod +x nomad
+sudo mv nomad /usr/local/bin/nomad
+
+sudo mkdir -p /etc/nomad.d
+sudo chmod a+w /etc/nomad.d
+
+echo Installing Docker ...
+sudo apt-get install apt-transport-https ca-certificates
+sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+sudo bash -c  'echo deb https://apt.dockerproject.org/repo ubuntu-xenial main > /etc/apt/sources.list.d/docker.list'
+sudo apt-get update
+sudo apt-get purge lxc-docker
+sudo apt-get -y install linux-image-extra-$(uname -r) linux-image-extra-virtual
+sudo apt-get -y install docker-engine
+sudo service docker start
+sudo groupadd docker
+sudo usermod -aG docker $USER
+sudo bash -c 'echo "nameserver 8.8.8.8" > /etc/resolv.conf'
+
+
+cat > server.hcl <<EOF
+addresses {
+    rpc  = "ADVERTISE_ADDR"
+    serf = "ADVERTISE_ADDR"
+}
+advertise {
+    http = "ADVERTISE_ADDR:4646"
+    rpc  = "ADVERTISE_ADDR:4647"
+    serf = "ADVERTISE_ADDR:4648"
+}
+bind_addr = "0.0.0.0"
+data_dir  = "/var/lib/nomad"
+log_level = "DEBUG"
+server {
+    enabled = true
+    bootstrap_expect = 3
+}
+EOF
+sed -i "s/ADVERTISE_ADDR/$1/" server.hcl
+sudo mv server.hcl /etc/nomad.d/server.hcl
+
+cat > nomad.service <<'EOF'
+[Unit]
+Description=Nomad
+Documentation=https://nomadproject.io/docs/
+[Service]
+ExecStart=/usr/local/bin/nomad agent -config /etc/nomad.d
+ExecReload=/bin/kill -HUP $MAINPID
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo mv nomad.service /etc/systemd/system/nomad.service
+
+sudo systemctl enable nomad
+sudo systemctl start nomad
+
+## Setup consul
+
+sudo mkdir -p /var/lib/consul
+
+wget https://releases.hashicorp.com/consul/0.7.0/consul_0.7.0_linux_amd64.zip
+unzip consul_0.7.0_linux_amd64.zip
+sudo mv consul /usr/local/bin/consul
+rm consul_0.7.0_linux_amd64.zip
+
+cat > consul.service <<'EOF'
+[Unit]
+Description=consul
+Documentation=https://consul.io/docs/
+[Service]
+ExecStart=/usr/local/bin/consul agent \
+  -advertise=ADVERTISE_ADDR \
+  -bind=0.0.0.0 \
+  -bootstrap-expect=3 \
+  -client=0.0.0.0 \
+  -data-dir=/var/lib/consul \
+  -server \
+  -ui  \
+  
+ExecReload=/bin/kill -HUP $MAINPID
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sed -i "s/ADVERTISE_ADDR/$1/" consul.service
+
+sudo mv consul.service /etc/systemd/system/consul.service
+sudo systemctl enable consul
+sudo systemctl start consul
+
+## Setup Vault
+
+wget https://releases.hashicorp.com/vault/0.6.1/vault_0.6.1_linux_amd64.zip
+unzip vault_0.6.1_linux_amd64.zip
+sudo mv vault /usr/local/bin/vault
+rm vault_0.6.1_linux_amd64.zip
+
+sudo mkdir -p /etc/vault
+
+cat > vault.hcl <<'EOF'
+backend "consul" {
+  advertise_addr = "http://ADVERTISE_ADDR:8200"
+  address = "127.0.0.1:8500"
+  path = "vault"
+}
+listener "tcp" {
+  address = "ADVERTISE_ADDR:8200"
+  tls_disable = 1
+}
+EOF
+sed -i "s/ADVERTISE_ADDR/$1/" vault.hcl
+sudo mv vault.hcl /etc/vault/vault.hcl 
+
+
+cat > vault.service <<'EOF'
+[Unit]
+Description=Vault
+Documentation=https://vaultproject.io/docs/
+[Service]
+ExecStart=/usr/local/bin/vault server \
+  -config /etc/vault/vault.hcl
+  
+ExecReload=/bin/kill -HUP $MAINPID
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo mv vault.service /etc/systemd/system/vault.service 
+
+sudo systemctl enable vault
+sudo systemctl start vault
+
+## Setup dnsmasq
+
+
+sudo apt-get install -y dnsmasq
+sudo mkdir -p /etc/dnsmasq.d
+sudo bash -c 'echo server=/consul/127.0.0.1#8600 >> /etc/dnsmasq.d/10-consul'
+
+
+sudo systemctl enable dnsmasq
+sudo systemctl start dnsmasq
+
+SCRIPT
+
+Vagrant.configure(2) do |config|
+  config.vm.box = "ubuntu/xenial64"
+
+  # Increase memory for Parallels Desktop
+  config.vm.provider "parallels" do |p, o|
+    p.memory = "1024"
+  end
+
+
+  # Increase memory for Virtualbox
+  config.vm.provider "virtualbox" do |vb|
+        vb.memory = "1024"
+  end
+
+  # Increase memory for VMware
+  ["vmware_fusion", "vmware_workstation"].each do |p|
+    config.vm.provider p do |v|
+      v.vmx["memsize"] = "1024"
+    end
+  end
+  config.vm.define "node1" do |node|
+    node.vm.hostname = "node1"
+    node.vm.network  "private_network", ip: "192.168.70.2"
+    node.vm.provision "shell", inline: $script, privileged: false, args: "192.168.70.2"
+  end
+  config.vm.define "node2" do |node|
+    node.vm.hostname = "node2"
+    node.vm.network  "private_network", ip: "192.168.70.3"
+    node.vm.provision "shell", inline: $script, privileged: false, args: "192.168.70.3"
+  end
+  config.vm.define "node3" do |node|
+    node.vm.hostname = "node3"
+    node.vm.network  "private_network", ip: "192.168.70.4"
+    node.vm.provision "shell", inline: $script, privileged: false, args: "192.168.70.4"
+  end
+end
